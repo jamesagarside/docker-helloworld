@@ -1,0 +1,68 @@
+# Deploy hello-world to the Elastic CE Tools Hub.
+#
+# Generated for github.com/jamesagarside/docker-helloworld on branch master.
+# Re-request from the hub UI to refresh values; the WIF provider and
+# service account below are tied to per-deployment IAM in GCP.
+#
+# This workflow exchanges GitHub's OIDC token for a GCP access token via
+# Workload Identity Federation. The deploy service account is bound in
+# GCP to subject `repo:jamesagarside/docker-helloworld:ref:refs/heads/master` —
+# this exact branch in this exact repo is the only thing that can deploy
+# hello-world. No long-lived keys, no PATs, no GitHub App.
+
+name: Deploy to Elastic CE Tools Hub
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required to mint the OIDC token for WIF
+
+# Back-to-back pushes queue; the older run isn't cancelled (cancelling
+# a partial deploy can leave Cloud Run in a half-updated state).
+concurrency:
+  group: deploy-elastic-hub-hello-world
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/14485593664/locations/global/workloadIdentityPools/ce-tools-hub-github/providers/github
+          service_account: hub-hello-world-deployer@elastic-ce-tools.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west2-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        env:
+          IMAGE_TAG: europe-west2-docker.pkg.dev/elastic-ce-tools/user-projects/hello-world
+        run: |
+          docker build \
+            -t "$IMAGE_TAG:${{ github.sha }}" \
+            -t "$IMAGE_TAG:latest" \
+            .
+          docker push "$IMAGE_TAG:${{ github.sha }}"
+          docker push "$IMAGE_TAG:latest"
+
+      - name: Deploy to Cloud Run
+        env:
+          IMAGE_TAG: europe-west2-docker.pkg.dev/elastic-ce-tools/user-projects/hello-world
+        run: |
+          gcloud run services update hub-hello-world \
+            --project=elastic-ce-tools \
+            --region=europe-west2 \
+            --image="$IMAGE_TAG:${{ github.sha }}" \
+            --update-labels="managed-by=ce-tools-hub,hub-slug=hello-world,gh-run-id=${{ github.run_id }}" \
+            --update-env-vars="^@@^IAP_JWT_AUDIENCE=/projects/14485593664/global/backendServices/8375813514543111174@@COMMIT_SHA=${{ github.sha }}@@RESTART_TIME=$(date +%s)"
+
