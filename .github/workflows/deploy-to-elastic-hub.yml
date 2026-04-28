@@ -64,5 +64,4 @@ jobs:
             --region=europe-west2 \
             --image="$IMAGE_TAG:${{ github.sha }}" \
             --update-labels="managed-by=ce-tools-hub,hub-slug=hello-world,gh-run-id=${{ github.run_id }}" \
-            --update-env-vars="^@@^IAP_JWT_AUDIENCE=/projects/14485593664/global/backendServices/8375813514543111174@@COMMIT_SHA=${{ github.sha }}@@RESTART_TIME=$(date +%s)"
-
+            --update-env-vars="^@@^IAP_JWT_AUDIENCE=/projects/14485593664/global/backendServices/8963453345165254708@@COMMIT_SHA=${{ github.sha }}@@RESTART_TIME=$(date +%s)"
