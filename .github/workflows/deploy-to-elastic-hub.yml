@@ -1,0 +1,44 @@
+# Deploy hello to Elastic Hub
+# Hostname after first successful deploy: https://hello.tools.elastic.dev
+
+name: Deploy to Elastic Hub
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/14485593664/locations/global/workloadIdentityPools/ce-tools-hub-github/providers/github
+          service_account: hub-hello-deployer@elastic-ce-tools.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west2-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        id: build
+        run: |
+          IMAGE="europe-west2-docker.pkg.dev/elastic-ce-tools/user-projects/hello:$GITHUB_SHA"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy hub-hello \
+            --region=europe-west2 \
+            --image=${{ steps.build.outputs.image }}
